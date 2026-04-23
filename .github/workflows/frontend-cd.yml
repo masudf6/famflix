@@ -1,0 +1,92 @@
+name: Frontend CD
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/cd-frontend.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/cd-frontend.yml"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REPOSITORY: famflix-frontend
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    outputs:
+      frontend_image: ${{ steps.meta.outputs.frontend_image }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: github.event_name == 'push'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build frontend image
+        run: |
+          docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./frontend
+
+      - name: Tag frontend image for ECR
+        if: github.event_name == 'push'
+        run: |
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+
+      - name: Push frontend image
+        if: github.event_name == 'push'
+        run: |
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+
+      - name: Export frontend image
+        id: meta
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          echo "frontend_image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, windows, x64, minikube-deploy]
+    needs: build-and-push
+
+    steps:
+      - name: Refresh ECR pull secret
+        shell: powershell
+        run: |
+          $password = aws ecr get-login-password --region $env:AWS_REGION
+          kubectl delete secret ecr-secret -n famflix --ignore-not-found
+          kubectl create secret docker-registry ecr-secret `
+            --namespace famflix `
+            --docker-server="$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com" `
+            --docker-username="AWS" `
+            --docker-password="$password"
+
+      - name: Update frontend deployment image
+        shell: powershell
+        run: |
+          kubectl set image deployment/frontend frontend="${{ needs.build-and-push.outputs.frontend_image }}" -n famflix
+
+      - name: Wait for frontend rollout
+        shell: powershell
+        run: |
+          kubectl rollout status deployment/frontend -n famflix

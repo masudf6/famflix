@@ -1,6 +1,6 @@
 
 k8s/
-
+misc/
 
 # === SECRETS & ENVIRONMENT ===
 # Never commit raw credentials to Git
