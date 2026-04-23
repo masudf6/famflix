@@ -49,8 +49,11 @@ jobs:
 
       - name: Export image
         id: meta
+        shell: bash
         run: |
-          echo "backend_image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "backend_image=$IMAGE_URI" >> $GITHUB_OUTPUT
+          echo "DEBUG: $IMAGE_URI"
 
   deploy:
     runs-on: [self-hosted, windows, x64, minikube-deploy]
