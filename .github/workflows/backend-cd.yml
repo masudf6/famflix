@@ -55,6 +55,12 @@ jobs:
           echo "backend_image=$IMAGE_URI" >> $GITHUB_OUTPUT
           echo "DEBUG: $IMAGE_URI"
 
+      - name: Debug image value
+        shell: powershell
+        run: |
+          Write-Output "IMAGE FROM BUILD:"
+          Write-Output "${{ needs.build-and-push.outputs.backend_image }}"
+
   deploy:
     runs-on: [self-hosted, windows, x64, minikube-deploy]
     needs: build-and-push
