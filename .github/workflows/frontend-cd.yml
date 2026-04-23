@@ -5,6 +5,9 @@ on:
     branches: ["main"]
     paths:
       - "frontend/**"
+      - "k8s/frontend-deployment.yaml"
+      - "k8s/frontend-service.yaml"
+      - "k8s/ingress-frontend.yaml"
       - ".github/workflows/frontend-cd.yml"
   workflow_dispatch:
 
@@ -35,44 +38,27 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build frontend image
+      - name: Build and push frontend image
+        shell: bash
         run: |
           docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./frontend
-
-      - name: Tag image
-        run: |
           docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-
-      - name: Push image
-        run: |
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
           docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
 
-      - name: Export image
+      - name: Export frontend image
         id: meta
+        shell: bash
         run: |
           echo "frontend_image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   deploy:
     runs-on: [self-hosted, windows, x64, minikube-deploy]
     needs: build-and-push
-    env:
-      KUBECONFIG: C:\actions-runner\kubeconfig
 
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Verify kubectl
-        shell: powershell
-        run: |
-          kubectl config current-context
-          kubectl get nodes
-
-      - name: Refresh ECR secret
+      - name: Refresh ECR pull secret
         shell: powershell
         run: |
           $password = aws ecr get-login-password --region $env:AWS_REGION
@@ -83,12 +69,12 @@ jobs:
             --docker-username="AWS" `
             --docker-password="$password"
 
-      - name: Deploy new image
+      - name: Update frontend deployment image
         shell: powershell
         run: |
           kubectl set image deployment/frontend frontend="${{ needs.build-and-push.outputs.frontend_image }}" -n famflix
 
-      - name: Wait rollout
+      - name: Wait for frontend rollout
         shell: powershell
         run: |
           kubectl rollout status deployment/frontend -n famflix

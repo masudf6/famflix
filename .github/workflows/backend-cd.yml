@@ -5,13 +5,15 @@ on:
     branches: ["main"]
     paths:
       - "backend/**"
+      - "k8s/backend-deployment.yaml"
+      - "k8s/backend-service.yaml"
       - ".github/workflows/backend-cd.yml"
   workflow_dispatch:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  ECR_REPOSITORY: famflix-api
+  ECR_REPOSITORY: famflix-backend
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -35,53 +37,27 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build backend image
+      - name: Build and push backend image
+        shell: bash
         run: |
           docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./backend
-
-      - name: Tag image
-        run: |
           docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-
-      - name: Push image
-        run: |
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
           docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
 
-      - name: Export image
+      - name: Export backend image
         id: meta
         shell: bash
         run: |
-          IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
-          echo "backend_image=$IMAGE_URI" >> $GITHUB_OUTPUT
-          echo "DEBUG: $IMAGE_URI"
-
-      - name: Debug image value
-        shell: powershell
-        run: |
-          Write-Output "IMAGE FROM BUILD:"
-          Write-Output "${{ needs.build-and-push.outputs.backend_image }}"
+          echo "backend_image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   deploy:
     runs-on: [self-hosted, windows, x64, minikube-deploy]
     needs: build-and-push
-    env:
-      KUBECONFIG: C:\actions-runner\kubeconfig
 
     steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Verify kubectl
-        shell: powershell
-        run: |
-          kubectl config current-context
-          kubectl get nodes
-
-      - name: Refresh ECR secret
+      - name: Refresh ECR pull secret
         shell: powershell
         run: |
           $password = aws ecr get-login-password --region $env:AWS_REGION
@@ -92,12 +68,12 @@ jobs:
             --docker-username="AWS" `
             --docker-password="$password"
 
-      - name: Deploy new image
+      - name: Update backend deployment image
         shell: powershell
         run: |
           kubectl set image deployment/backend backend="${{ needs.build-and-push.outputs.backend_image }}" -n famflix
 
-      - name: Wait rollout
+      - name: Wait for backend rollout
         shell: powershell
         run: |
           kubectl rollout status deployment/backend -n famflix
