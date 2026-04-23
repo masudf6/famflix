@@ -4,12 +4,12 @@ on:
   pull_request:
     paths:
       - "frontend/**"
-      - ".github/workflows/cd-frontend.yml"
+      - ".github/workflows/frontend-cd.yml"
   push:
     branches: ["main"]
     paths:
       - "frontend/**"
-      - ".github/workflows/cd-frontend.yml"
+      - ".github/workflows/frontend-cd.yml"
   workflow_dispatch:
 
 env:
