@@ -15,7 +15,7 @@ on:
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  ECR_REPOSITORY: famflix-backend
+  ECR_REPOSITORY: famflix-api
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
