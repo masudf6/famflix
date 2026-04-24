@@ -82,7 +82,9 @@ jobs:
       - name: Update frontend deployment image
         shell: powershell
         run: |
-          kubectl set image deployment/frontend frontend="${{ needs.build-and-push.outputs.frontend_image }}" -n famflix
+          $image = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com/$env:ECR_REPOSITORY`:$env:IMAGE_TAG"
+          echo "Frontend image: $image"
+          kubectl set image deployment/frontend frontend="$image" -n famflix
 
       - name: Wait for frontend rollout
         shell: powershell
