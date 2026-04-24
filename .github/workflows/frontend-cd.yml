@@ -41,17 +41,22 @@ jobs:
       - name: Build and push frontend image
         shell: bash
         run: |
+          IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY"
+
           docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./frontend
-          docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-          docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:latest
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_URI:$IMAGE_TAG
+          docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_URI:latest
+
+          docker push $IMAGE_URI:$IMAGE_TAG
+          docker push $IMAGE_URI:latest
 
       - name: Export frontend image
         id: meta
         shell: bash
         run: |
-          echo "frontend_image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          FRONTEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "frontend_image=$FRONTEND_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Pushed frontend image: $FRONTEND_IMAGE"
 
   deploy:
     runs-on: [self-hosted, windows, x64, minikube-deploy]
@@ -68,6 +73,11 @@ jobs:
             --docker-server="$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com" `
             --docker-username="AWS" `
             --docker-password="$password"
+
+      - name: Debug frontend image
+        shell: powershell
+        run: |
+          echo "Frontend image: ${{ needs.build-and-push.outputs.frontend_image }}"
 
       - name: Update frontend deployment image
         shell: powershell
