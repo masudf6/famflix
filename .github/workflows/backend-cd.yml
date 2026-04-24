@@ -71,7 +71,9 @@ jobs:
       - name: Update backend deployment image
         shell: powershell
         run: |
-          kubectl set image deployment/backend backend="${{ needs.build-and-push.outputs.backend_image }}" -n famflix
+          $image = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com/$env:ECR_REPOSITORY`:$env:IMAGE_TAG"
+          echo "Backend image: $image"
+          kubectl set image deployment/backend backend="$image" -n famflix
 
       - name: Wait for backend rollout
         shell: powershell
