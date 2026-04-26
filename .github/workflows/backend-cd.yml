@@ -80,6 +80,7 @@ jobs:
       - name: Update backend deployment image
         shell: powershell
         run: |
+          $env:KUBECONFIG="$env:USERPROFILE\.kube\config"
           $image = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com/$env:ECR_REPOSITORY`:$env:IMAGE_TAG"
           echo "Backend image: $image"
           kubectl set image deployment/backend backend="$image" -n famflix
@@ -87,4 +88,5 @@ jobs:
       - name: Wait for backend rollout
         shell: powershell
         run: |
+          $env:KUBECONFIG="$env:USERPROFILE\.kube\config"
           kubectl rollout status deployment/backend -n famflix
