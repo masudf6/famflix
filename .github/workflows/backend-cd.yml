@@ -60,7 +60,6 @@ jobs:
       - name: Refresh ECR pull secret
         shell: powershell
         run: |
-          $env:KUBECONFIG="C:\Users\Masud\.kube\config"
           $password = aws ecr get-login-password --region $env:AWS_REGION
           kubectl delete secret ecr-secret -n famflix --ignore-not-found
           kubectl create secret docker-registry ecr-secret `
