@@ -73,7 +73,7 @@ jobs:
       - name: Refresh ECR pull secret
         shell: powershell
         run: |
-          $env:KUBECONFIG="C:\Users\Masud\.kube\config"
+          $env:KUBECONFIG="$env:USERPROFILE\.kube\config"
           $password = aws ecr get-login-password --region $env:AWS_REGION
           kubectl delete secret ecr-secret -n famflix --ignore-not-found
           kubectl create secret docker-registry ecr-secret `
@@ -90,8 +90,7 @@ jobs:
       - name: Update frontend deployment image
         shell: powershell
         run: |
-          $env:KUBECONFIG="$env:USERPROFILE\.kube\config"
-          $image = "${{ needs.build-and-push.outputs.frontend_image }}"
+          $image = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com/$env:ECR_REPOSITORY`:$env:IMAGE_TAG"
           echo "Frontend image: $image"
           kubectl set image deployment/frontend frontend="$image" -n famflix
 
