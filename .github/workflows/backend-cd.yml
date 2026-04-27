@@ -59,7 +59,7 @@ jobs:
     needs: build-and-push
 
     env:
-      KUBECONFIG: 'C:\Users\Masud\.kube\config'
+      KUBECONFIG: 'C:\actions-runner\.kube\config'
 
     steps:
       - name: Configure AWS credentials for deploy
@@ -68,6 +68,12 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Refresh runner kubeconfig
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "C:\actions-runner\.kube" | Out-Null
+          Copy-Item "C:\Users\Masud\.kube\config" "C:\actions-runner\.kube\config" -Force
 
       - name: Verify kubeconfig
         shell: powershell
