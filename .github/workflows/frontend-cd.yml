@@ -58,29 +58,29 @@ jobs:
           echo "frontend_image=$FRONTEND_IMAGE" >> "$GITHUB_OUTPUT"
           echo "Pushed frontend image: $FRONTEND_IMAGE"
 
-    deploy:
-      runs-on: [self-hosted, windows, x64, minikube-deploy]
-      needs: build-and-push
+  deploy:
+    runs-on: [self-hosted, windows, x64, minikube-deploy]
+    needs: build-and-push
 
-      steps:
-        - name: Configure AWS credentials for deploy
-          uses: aws-actions/configure-aws-credentials@v4
-          with:
-            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            aws-region: ${{ secrets.AWS_REGION }}
+    steps:
+      - name: Configure AWS credentials for deploy
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-        - name: Refresh ECR pull secret
-          shell: powershell
-          run: |
-            $env:KUBECONFIG="C:\Users\Masud\.kube\config"
-            $password = aws ecr get-login-password --region $env:AWS_REGION
-            kubectl delete secret ecr-secret -n famflix --ignore-not-found
-            kubectl create secret docker-registry ecr-secret `
-              --namespace famflix `
-              --docker-server="$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com" `
-              --docker-username="AWS" `
-              --docker-password="$password"
+      - name: Refresh ECR pull secret
+        shell: powershell
+        run: |
+          $env:KUBECONFIG="C:\Users\Masud\.kube\config"
+          $password = aws ecr get-login-password --region $env:AWS_REGION
+          kubectl delete secret ecr-secret -n famflix --ignore-not-found
+          kubectl create secret docker-registry ecr-secret `
+            --namespace famflix `
+            --docker-server="$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com" `
+            --docker-username="AWS" `
+            --docker-password="$password"
 
       - name: Debug frontend image
         shell: powershell
