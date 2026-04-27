@@ -11,6 +11,10 @@ on:
       - ".github/workflows/frontend-cd.yml"
   workflow_dispatch:
 
+concurrency:
+  group: famflix-minikube-deploy
+  cancel-in-progress: false
+
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -20,9 +24,6 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
-    outputs:
-      frontend_image: ${{ steps.meta.outputs.frontend_image }}
 
     steps:
       - name: Checkout code
@@ -43,26 +44,27 @@ jobs:
         run: |
           IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY"
 
+          echo "Building frontend image: $IMAGE_URI:$IMAGE_TAG"
+
           docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./frontend
+
           docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_URI:$IMAGE_TAG
           docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_URI:latest
 
           docker push $IMAGE_URI:$IMAGE_TAG
           docker push $IMAGE_URI:latest
 
-      - name: Export frontend image
-        id: meta
-        shell: bash
-        run: |
-          FRONTEND_IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
-          echo "frontend_image=$FRONTEND_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "Pushed frontend image: $FRONTEND_IMAGE"
-
   deploy:
     runs-on: [self-hosted, windows, x64, minikube-deploy]
     needs: build-and-push
 
+    env:
+      KUBECONFIG: 'C:\Users\Masud\.kube\config'
+
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials for deploy
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -70,31 +72,51 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Verify kubeconfig
+        shell: powershell
+        run: |
+          echo "KUBECONFIG=$env:KUBECONFIG"
+
+          if (!(Test-Path $env:KUBECONFIG)) {
+            throw "Kubeconfig not found at $env:KUBECONFIG"
+          }
+
+          kubectl config current-context
+          kubectl get nodes
+          kubectl get pods -n famflix
+
       - name: Refresh ECR pull secret
         shell: powershell
         run: |
-          $env:KUBECONFIG="$env:USERPROFILE\.kube\config"
-          $password = aws ecr get-login-password --region $env:AWS_REGION
+          $password = aws ecr get-login-password --region "${{ secrets.AWS_REGION }}"
+
           kubectl delete secret ecr-secret -n famflix --ignore-not-found
+
           kubectl create secret docker-registry ecr-secret `
             --namespace famflix `
-            --docker-server="$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com" `
+            --docker-server="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com" `
             --docker-username="AWS" `
             --docker-password="$password"
-
-      - name: Debug frontend image
-        shell: powershell
-        run: |
-          echo "Frontend image: ${{ needs.build-and-push.outputs.frontend_image }}"
 
       - name: Update frontend deployment image
         shell: powershell
         run: |
-          $image = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com/$env:ECR_REPOSITORY`:$env:IMAGE_TAG"
+          $image = "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/famflix-frontend:${{ github.sha }}"
+
           echo "Frontend image: $image"
+
+          if ([string]::IsNullOrWhiteSpace($image)) {
+            throw "Frontend image is empty"
+          }
+
           kubectl set image deployment/frontend frontend="$image" -n famflix
 
       - name: Wait for frontend rollout
         shell: powershell
         run: |
           kubectl rollout status deployment/frontend -n famflix
+
+      - name: Show frontend pods
+        shell: powershell
+        run: |
+          kubectl get pods -n famflix -l app=frontend
