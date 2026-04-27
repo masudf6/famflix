@@ -32,6 +32,9 @@ app.add_middleware(
 def root():
     return {"message": "API is running"}
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 import socket
 
