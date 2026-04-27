@@ -90,7 +90,8 @@ jobs:
       - name: Update frontend deployment image
         shell: powershell
         run: |
-          $image = "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com/$env:ECR_REPOSITORY`:$env:IMAGE_TAG"
+          $env:KUBECONFIG="$env:USERPROFILE\.kube\config"
+          $image = "${{ needs.build-and-push.outputs.frontend_image }}"
           echo "Frontend image: $image"
           kubectl set image deployment/frontend frontend="$image" -n famflix
 
