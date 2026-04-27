@@ -115,6 +115,12 @@ def create_media(
     db: Session = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
+    if not s3_object_exists(payload.file.s3_key):
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file was not found in S3. Upload the file first, then save metadata.",
+        )
+
     media = Media(
         title=payload.title,
         description=payload.description,
@@ -123,6 +129,7 @@ def create_media(
         uploaded_by=admin_user.id,
         is_public=payload.is_public,
     )
+
     db.add(media)
     db.flush()
 
@@ -134,16 +141,11 @@ def create_media(
         file_size_bytes=payload.file.file_size_bytes,
         duration_seconds=payload.file.duration_seconds,
     )
+
     db.add(media_file)
     db.commit()
     db.refresh(media)
     db.refresh(media_file)
-
-    if not s3_object_exists(payload.file.s3_key):
-        raise HTTPException(
-            status_code=400,
-            detail="Uploaded file was not found in S3. Upload the file first, then save metadata.",
-        )
 
     return build_media_response(media, media_file)
 
