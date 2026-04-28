@@ -99,7 +99,7 @@ jobs:
       - name: Update frontend deployment image
         shell: bash
         run: |
-          IMAGE="${{ needs.build-and-push.outputs.frontend_image }}"
+          IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
 
           echo "Frontend image: $IMAGE"
 

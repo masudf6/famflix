@@ -96,19 +96,19 @@ jobs:
             --docker-username="AWS" \
             --docker-password="$ECR_PASSWORD"
 
-      - name: Update backend deployment image
+      - name: Update frontend deployment image
         shell: bash
         run: |
-          IMAGE="${{ needs.build-and-push.outputs.backend_image }}"
+          IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
 
-          echo "Backend image: $IMAGE"
+          echo "Frontend image: $IMAGE"
 
           if [ -z "$IMAGE" ]; then
-            echo "Backend image is empty"
+            echo "Frontend image is empty"
             exit 1
           fi
 
-          kubectl set image deployment/backend backend="$IMAGE" -n famflix
+          kubectl set image deployment/frontend frontend="$IMAGE" -n famflix
 
       - name: Wait for backend rollout
         shell: bash
