@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: famflix-frontend-ingress
+  namespace: famflix
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: famflix.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 80

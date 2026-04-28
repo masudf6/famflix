@@ -117,7 +117,7 @@ jobs:
       - name: Wait for frontend rollout
         shell: powershell
         run: |
-          kubectl rollout status deployment/frontend -n famflix
+          kubectl rollout status deployment/frontend -n famflix --timeout=180s
 
       - name: Show frontend pods
         shell: powershell
