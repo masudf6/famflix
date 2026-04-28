@@ -5,9 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "frontend/**"
-      - "k8s/frontend-deployment.yaml"
-      - "k8s/frontend-service.yaml"
-      - "k8s/ingress-frontend.yaml"
+      - "k8s/***"
       - ".github/workflows/frontend-cd.yml"
   workflow_dispatch:
 
@@ -31,10 +29,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Apply Kubernetes manifests
-        run: |
-          kubectl apply -k k8s
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -86,6 +80,11 @@ jobs:
           kubectl config current-context
           kubectl get nodes
           kubectl get pods -n famflix
+
+      - name: Apply Kubernetes manifests
+        shell: bash
+        run: |
+          kubectl apply -k k8s/ -n famflix
 
       - name: Refresh ECR pull secret
         shell: bash

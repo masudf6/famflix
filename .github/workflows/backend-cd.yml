@@ -5,7 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "backend/**"
-      - "k8s/**"
+      - "k8s/***"
       - ".github/workflows/backend-cd.yml"
   workflow_dispatch:
 
@@ -67,9 +67,6 @@ jobs:
       KUBECONFIG: /home/ubuntu/.kube/config
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Verify k3s access
         shell: bash
         run: |
@@ -87,7 +84,7 @@ jobs:
       - name: Apply Kubernetes manifests
         shell: bash
         run: |
-          kubectl apply -k k8s
+          kubectl apply -k k8s/ -n famflix
 
       - name: Refresh ECR pull secret
         shell: bash
@@ -105,7 +102,7 @@ jobs:
       - name: Update backend deployment image
         shell: bash
         run: |
-          IMAGE="${{ needs.build-and-push.outputs.backend_image }}"
+          IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
 
           echo "Backend image: $IMAGE"
 
