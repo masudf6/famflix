@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: famflix-minikube-deploy
+  group: famflix-k3s-deploy
   cancel-in-progress: false
 
 env:
@@ -24,6 +24,9 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+
+    outputs:
+      backend_image: ${{ steps.image.outputs.backend_image }}
 
     steps:
       - name: Checkout code
@@ -40,86 +43,79 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push backend image
+        id: image
         shell: bash
         run: |
           IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY"
+          FULL_IMAGE="$IMAGE_URI:$IMAGE_TAG"
 
-          echo "Building backend image: $IMAGE_URI:$IMAGE_TAG"
+          echo "Building backend image: $FULL_IMAGE"
 
-          docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./backend
+          docker build -t "$ECR_REPOSITORY:$IMAGE_TAG" ./backend
 
-          docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_URI:$IMAGE_TAG
-          docker tag $ECR_REPOSITORY:$IMAGE_TAG $IMAGE_URI:latest
+          docker tag "$ECR_REPOSITORY:$IMAGE_TAG" "$FULL_IMAGE"
+          docker tag "$ECR_REPOSITORY:$IMAGE_TAG" "$IMAGE_URI:latest"
 
-          docker push $IMAGE_URI:$IMAGE_TAG
-          docker push $IMAGE_URI:latest
+          docker push "$FULL_IMAGE"
+          docker push "$IMAGE_URI:latest"
+
+          echo "backend_image=$FULL_IMAGE" >> "$GITHUB_OUTPUT"
 
   deploy:
-    runs-on: [self-hosted, windows, x64, minikube-deploy]
+    runs-on: [self-hosted, linux, x64, famflix, k3s, prod]
     needs: build-and-push
 
     env:
-      KUBECONFIG: 'C:\actions-runner\.kube\config'
+      KUBECONFIG: /home/ubuntu/.kube/config
 
     steps:
-      - name: Configure AWS credentials for deploy
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Refresh runner kubeconfig
-        shell: powershell
+      - name: Verify k3s access
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force -Path "C:\actions-runner\.kube" | Out-Null
-          Copy-Item "C:\Users\Masud\.kube\config" "C:\actions-runner\.kube\config" -Force
+          echo "KUBECONFIG=$KUBECONFIG"
 
-      - name: Verify kubeconfig
-        shell: powershell
-        run: |
-          echo "KUBECONFIG=$env:KUBECONFIG"
-
-          if (!(Test-Path $env:KUBECONFIG)) {
-            throw "Kubeconfig not found at $env:KUBECONFIG"
-          }
+          if [ ! -f "$KUBECONFIG" ]; then
+            echo "Kubeconfig not found at $KUBECONFIG"
+            exit 1
+          fi
 
           kubectl config current-context
           kubectl get nodes
           kubectl get pods -n famflix
 
       - name: Refresh ECR pull secret
-        shell: powershell
+        shell: bash
         run: |
-          $password = aws ecr get-login-password --region "${{ secrets.AWS_REGION }}"
+          ECR_PASSWORD=$(aws ecr get-login-password --region "$AWS_REGION")
 
           kubectl delete secret ecr-secret -n famflix --ignore-not-found
 
-          kubectl create secret docker-registry ecr-secret `
-            --namespace famflix `
-            --docker-server="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com" `
-            --docker-username="AWS" `
-            --docker-password="$password"
+          kubectl create secret docker-registry ecr-secret \
+            --namespace famflix \
+            --docker-server="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" \
+            --docker-username="AWS" \
+            --docker-password="$ECR_PASSWORD"
 
       - name: Update backend deployment image
-        shell: powershell
+        shell: bash
         run: |
-          $image = "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/famflix-api:${{ github.sha }}"
+          IMAGE="${{ needs.build-and-push.outputs.backend_image }}"
 
-          echo "Backend image: $image"
+          echo "Backend image: $IMAGE"
 
-          if ([string]::IsNullOrWhiteSpace($image)) {
-            throw "Backend image is empty"
-          }
+          if [ -z "$IMAGE" ]; then
+            echo "Backend image is empty"
+            exit 1
+          fi
 
-          kubectl set image deployment/backend backend="$image" -n famflix
+          kubectl set image deployment/backend backend="$IMAGE" -n famflix
 
       - name: Wait for backend rollout
-        shell: powershell
+        shell: bash
         run: |
           kubectl rollout status deployment/backend -n famflix --timeout=180s
 
       - name: Show backend pods
-        shell: powershell
+        shell: bash
         run: |
-          kubectl get pods -n famflix -l app=backend
+          kubectl get pods -n famflix -l app=backend -o wide
