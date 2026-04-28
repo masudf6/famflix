@@ -4,7 +4,7 @@ metadata:
   name: famflix-frontend-ingress
   namespace: famflix
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: famflix.local
       http:
