@@ -6,7 +6,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: famflix.local
+    - host:
       http:
         paths:
           - path: /
