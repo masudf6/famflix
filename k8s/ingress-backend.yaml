@@ -19,6 +19,8 @@ spec:
   ingressClassName: traefik
   rules:
     - host:
+        - famflix.cc
+        - www.famflix.cc
       http:
         paths:
           - path: /api
