@@ -1,0 +1,127 @@
+name: Backend CD
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - "k8s/**"
+      - ".github/workflows/backend-cd.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: famflix-k3s-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REPOSITORY: famflix-api
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    outputs:
+      backend_image: ${{ steps.image.outputs.backend_image }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        id: image
+        shell: bash
+        run: |
+          IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY"
+          FULL_IMAGE="$IMAGE_URI:$IMAGE_TAG"
+
+          echo "Building backend image: $FULL_IMAGE"
+
+          docker build -t "$ECR_REPOSITORY:$IMAGE_TAG" ./backend
+
+          docker tag "$ECR_REPOSITORY:$IMAGE_TAG" "$FULL_IMAGE"
+          docker tag "$ECR_REPOSITORY:$IMAGE_TAG" "$IMAGE_URI:latest"
+
+          docker push "$FULL_IMAGE"
+          docker push "$IMAGE_URI:latest"
+
+          echo "backend_image=$FULL_IMAGE" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    runs-on: [self-hosted, linux, x64, famflix, k3s, prod]
+    needs: build-and-push
+
+    env:
+      KUBECONFIG: /home/ubuntu/.kube/config
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify k3s access
+        shell: bash
+        run: |
+          echo "KUBECONFIG=$KUBECONFIG"
+
+          if [ ! -f "$KUBECONFIG" ]; then
+            echo "Kubeconfig not found at $KUBECONFIG"
+            exit 1
+          fi
+
+          kubectl config current-context
+          kubectl get nodes
+          kubectl get pods -n famflix
+
+      - name: Apply Kubernetes manifests
+        shell: bash
+        run: |
+          kubectl apply -k k8s/ -n famflix
+
+      - name: Refresh ECR pull secret
+        shell: bash
+        run: |
+          ECR_PASSWORD=$(aws ecr get-login-password --region "$AWS_REGION")
+
+          kubectl delete secret ecr-secret -n famflix --ignore-not-found
+
+          kubectl create secret docker-registry ecr-secret \
+            --namespace famflix \
+            --docker-server="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com" \
+            --docker-username="AWS" \
+            --docker-password="$ECR_PASSWORD"
+
+      - name: Update backend deployment image
+        shell: bash
+        run: |
+          IMAGE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          echo "Backend image: $IMAGE"
+
+          if [ -z "$IMAGE" ]; then
+            echo "Backend image is empty"
+            exit 1
+          fi
+
+          kubectl set image deployment/backend backend="$IMAGE" -n famflix
+
+      - name: Wait for backend rollout
+        shell: bash
+        run: |
+          kubectl rollout status deployment/backend -n famflix --timeout=180s
+
+      - name: Show backend pods
+        shell: bash
+        run: |
+          kubectl get pods -n famflix -l app=backend -o wide

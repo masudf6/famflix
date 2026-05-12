@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: famflix
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      imagePullSecrets:
+        - name: ecr-secret
+      containers:
+        - name: backend
+          image: 673457927335.dkr.ecr.ap-southeast-2.amazonaws.com/famflix-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: famflix-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: famflix-secret
+                  key: JWT_SECRET_KEY
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: famflix-secret
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: famflix-secret
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: JWT_ALGORITHM
+              valueFrom:
+                configMapKeyRef:
+                  name: famflix-config
+                  key: JWT_ALGORITHM
+            - name: ACCESS_TOKEN_EXPIRE_MINUTES
+              valueFrom:
+                configMapKeyRef:
+                  name: famflix-config
+                  key: ACCESS_TOKEN_EXPIRE_MINUTES
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: famflix-config
+                  key: AWS_REGION
+            - name: AWS_S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: famflix-secret
+                  key: AWS_S3_BUCKET
+            - name: S3_PRESIGNED_URL_EXPIRE_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: famflix-config
+                  key: S3_PRESIGNED_URL_EXPIRE_SECONDS
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: famflix-secret
+                  key: OPENAI_API_KEY
+            - name: OPENAI_AGENT_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: famflix-config
+                  key: OPENAI_AGENT_MODEL
+            - name: TMDB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: famflix-secret
+                  key: TMDB_API_KEY
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

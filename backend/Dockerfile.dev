@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1.7
+# Backend dev image: code is bind-mounted at runtime, uvicorn runs with --reload.
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# System deps (build-essential needed for some wheels)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python deps. watchfiles makes uvicorn --reload reliable inside containers.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt watchfiles
+
+# NOTE: We deliberately DO NOT copy ./app here.
+# In docker-compose.dev.yml, ./backend/app is bind-mounted to /app/app
+# so edits on the host trigger uvicorn's auto-reload immediately.
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--reload", \
+     "--reload-dir", "/app/app"]

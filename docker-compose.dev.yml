@@ -1,0 +1,75 @@
+# Local-only development stack with live reload.
+# Run with:  docker compose -f docker-compose.dev.yml up --build
+#
+# - Backend:  FastAPI + uvicorn --reload, source mounted from ./backend/app
+# - Frontend: Vite dev server with HMR, source mounted from ./frontend
+# - DB:       Postgres 15, data persisted in a named volume
+
+services:
+  db:
+    image: postgres:15
+    container_name: famflix_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: famflix_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d famflix_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: famflix_backend_dev
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override DATABASE_URL so backend talks to the db service, not localhost.
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/famflix_db
+      # Force watchfiles to use polling — needed for reliable reload on
+      # bind-mounted volumes (Docker Desktop on macOS/Windows especially).
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      # Live code mount: edit ./backend/app on host -> uvicorn auto-reloads.
+      - ./backend/app:/app/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: famflix_frontend_dev
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    environment:
+      # Browser hits backend directly. Backend's CORS already allows
+      # http://localhost:5173 and http://127.0.0.1:5173.
+      VITE_API_BASE_URL: "http://localhost:8000"
+      # Polling-based file watching for reliable HMR on bind mounts.
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      # Bind-mount the whole frontend tree so edits are picked up live.
+      - ./frontend:/app
+      # Anonymous volume keeps the container's node_modules from being
+      # shadowed by the host's (which may be missing or platform-mismatched).
+      - /app/node_modules
+
+volumes:
+  postgres_data_dev:

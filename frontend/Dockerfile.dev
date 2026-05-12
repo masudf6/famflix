@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1.7
+# Frontend dev image: runs Vite dev server with HMR.
+# Source is bind-mounted at runtime; node_modules lives inside the container.
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install deps in the image so they're cached in a named volume layer.
+# package*.json are the only things baked in; everything else is bind-mounted.
+COPY package.json package-lock.json* bun.lockb* ./
+RUN npm install
+
+# The actual source is provided via bind-mount in docker-compose.dev.yml.
+# We don't COPY . . here on purpose.
+
+EXPOSE 5173
+
+# Bind to 0.0.0.0 so the port is reachable from the host.
+# Override port 8080 (from vite.config.ts) -> 5173 to match the backend's
+# CORS allowlist in app/main.py without touching source.
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
